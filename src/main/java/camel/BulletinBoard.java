@@ -4,6 +4,9 @@ import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 import java.math.BigInteger;
 
+import org.bouncycastle.math.ec.ECCurve;
+import org.bouncycastle.math.ec.ECPoint;
+
 /**
  * This class represents the bulletin board.
  */
@@ -11,38 +14,29 @@ public class BulletinBoard {
 
     // parameters for the election
     private final int num_candidates;
-    private final BigInteger g0;
-    private final BigInteger g1;
-    private final BigInteger p;
-    private final BigInteger q;
+    private final ECPoint g0;
+    private final ECPoint g1;
+    ECCurve.Fp curve;
 
     // tally of votes and randomness for each round
     private ArrayList<int[]> t;
     private ArrayList<BigInteger[]> s;
 
-    // storage of all ballots over all rounds of the tallying phase 
-    private ArrayList<ArrayList<Ballot>> ballots;
+    // storage of all indexed data per round of the tallying phase
+    public ArrayList<HashMap<Integer,BulletinBoardData>> datas;
 
-    // storage of all NIZKPs
-    private ArrayList<ArrayList<NIZKP>> bal_nizkps;
-    private ArrayList<ArrayList<NIZKP>> enc_nizkps;
-
-
-    public BulletinBoard(int num_candidates, BigInteger g0, BigInteger g1, BigInteger p, BigInteger q) {
+    public BulletinBoard(int num_candidates, ECPoint g0, ECPoint g1, ECCurve.Fp curve) {
 
         this.num_candidates = num_candidates;
 
         this.g0 = g0;
         this.g1 = g1;
-        this.p = p;
-        this.q = q;
+        this.curve = curve;
 
         this.t = new ArrayList<int[]>();
         this.s = new ArrayList<BigInteger[]>();
 
-        this.ballots = new ArrayList<ArrayList<Ballot>>();
-        this.bal_nizkps = new ArrayList<ArrayList<NIZKP>>();
-        this.enc_nizkps = new ArrayList<ArrayList<NIZKP>>();
+        this.datas = new ArrayList<HashMap<Integer,BulletinBoardData>>();
 
         // initialise t and s for each round
         // and initialise the storage for the tallying ballots as well
@@ -53,9 +47,7 @@ public class BulletinBoard {
                 zeroes[j] = BigInteger.ZERO;
             }
             this.s.add(i, zeroes);
-            ballots.add(new ArrayList<Ballot>());
-            bal_nizkps.add(new ArrayList<NIZKP>());
-            this.enc_nizkps.add(new ArrayList<NIZKP>());
+            datas.add(new HashMap<Integer,BulletinBoardData>());
         }
 
     }
@@ -80,34 +72,20 @@ public class BulletinBoard {
     // add to the randomness for a round
     public void addToEncodingRandomnessAtRound(int round, BigInteger[] randomness) {
         for (int i = 0; i < num_candidates; i++) {
-            this.s.get(round)[i] = s.get(round)[i].add(randomness[i]).mod(p);
+            this.s.get(round)[i] = s.get(round)[i].add(randomness[i]);
         }
     }
 
-    // add a ballot to the list of all ballots over all rounds
-    public void addBallot(int round, Ballot ballot) {
-        this.ballots.get(round).add(ballot);
+    public void addToBulletinDataAtRound(int round, BulletinBoardData data) { 
+        this.datas.get(round).put(data.getBallot().getIndex(), data);
     }
 
-    public ArrayList<Ballot> getBallotsAtRound(int round) {
-        return this.ballots.get(round);
+    public HashMap<Integer, BulletinBoardData> getBulletinDataAtRound(int round) {
+        return this.datas.get(round);
     }
 
-    // add a nizkp to the list of all nizkps over all rounds
-    public void addBallotNIZKP(int round, NIZKP bal_nizkp) {
-        this.bal_nizkps.get(round).add(bal_nizkp);
-    }
-
-    public void addEncodingNIZKP(int round, NIZKP enc_nizkp) {
-        this.enc_nizkps.get(round).add(enc_nizkp);
-    }
-
-    public ArrayList<NIZKP> getBallotNIZKPsAtRound(int round) {
-        return this.bal_nizkps.get(round);
-    }
-
-    public ArrayList<NIZKP> getEncodingNIZKPsAtRound(int round) {
-        return this.enc_nizkps.get(round);
+    public void removeFromBulletinDataAtRound(int round, int index) {
+        this.datas.get(round).remove(index);
     }
 
     // display the tally list in a neat format for a round
@@ -143,36 +121,38 @@ public class BulletinBoard {
 
         boolean hold = true;
 
-        ArrayList<Ballot> ballots_round = this.getBallotsAtRound(round);
+        HashMap<Integer, BulletinBoardData> data = this.getBulletinDataAtRound(round);
+
         int[] tally_round = this.getTallyAtRound(round);
         BigInteger[] randomness_round = this.getRandomnessAtRound(round);
 
-        BigInteger[] e_prod = new BigInteger[num_candidates];
-        BigInteger[] z_prod = new BigInteger[num_candidates];
+        ECPoint[] e_sum = new ECPoint[num_candidates];
+        ECPoint[] z_sum = new ECPoint[num_candidates];
 
         for (int i = 0; i < num_candidates; i++) {
 
-            e_prod[i] = BigInteger.ONE;
-            z_prod[i] = BigInteger.ONE;
+            e_sum[i] = curve.getInfinity();
+            z_sum[i] = curve.getInfinity();
 
-            for (int k = 0; k < ballots_round.size(); k++) {
+            for (int k : data.keySet()) {
 
-                Ballot ballot = ballots_round.get(k);
-                BigInteger[] e = ballot.getE();
-                BigInteger[] z = ballot.getZ();
+                Ballot ballot = data.get(k).getBallot();
+                ECPoint[] e = ballot.getE();
+                ECPoint[] z = ballot.getZ();
 
-                e_prod[i] = e_prod[i].multiply(e[i]).mod(p);
-                z_prod[i] = z_prod[i].multiply(z[i]).mod(p);
+                e_sum[i] = e_sum[i].add(e[i]);
+                z_sum[i] = z_sum[i].add(z[i]);
+
 
             }
 
-            BigInteger left0 = e_prod[i];
-            BigInteger right0 = g0.modPow(randomness_round[i].mod(q),p).multiply(g1.modPow(BigInteger.valueOf(tally_round[i]).mod(q),p)).mod(p);
+            ECPoint left0 = e_sum[i];
+            ECPoint right0 = g0.multiply(randomness_round[i]).add(g1.multiply(BigInteger.valueOf(t.get(round)[i])));
 
-            BigInteger left1 = z_prod[i];
-            BigInteger right1 = g1.modPow(randomness_round[i].mod(q),p);
+            ECPoint left1 = z_sum[i];
+            ECPoint right1 = g1.multiply(s.get(round)[i]);
 
-            if (left0.compareTo(right0) != 0 || left1.compareTo(right1) != 0) {
+            if (!left0.equals(right0) || !left1.equals(right1)) {
                 hold = false;
             }
 

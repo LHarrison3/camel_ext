@@ -1,6 +1,7 @@
 .gradle
 /build/
 /benchmarks/
+/aus/
 *.txt
 *.png
 *.py

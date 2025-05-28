@@ -5,6 +5,8 @@ import java.math.BigInteger;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
+import org.bouncycastle.math.ec.ECCurve;
+import org.bouncycastle.math.ec.ECPoint;
 
 /**
  * This class represents the NIZKPs of well-formedness during the Vote Casting phase.
@@ -13,11 +15,14 @@ public class CastNIZKP extends NIZKP {
 
     // this NIZKP has one conjunction
     // we store all the published values per conjunction
-    private BigInteger[][] con;
+    // we separate the commitments from the challenges and responses
+    private ECPoint[][] con_t;
+    private BigInteger[][] con_c; 
+    private BigInteger[][] con_s;
 
-    public CastNIZKP(BigInteger p, BigInteger q, BigInteger g0, BigInteger g1, int num_candidates, Ballot ballot, int[] vote, BigInteger[] x) {
+    public CastNIZKP(ECCurve.Fp curve, ECPoint g0, ECPoint g1, int num_candidates, Ballot ballot, int[] vote, BigInteger[] x) {
 
-        super(p, q, g0, g1, num_candidates, ballot);
+        super(curve, g0, g1, num_candidates, ballot);
 
         genCon(vote, x);
 
@@ -29,15 +34,18 @@ public class CastNIZKP extends NIZKP {
 
     }
 
+    
     // generate the first conjunction 
     // /\ j in [1,n] U {0} : \/ i in [1,n] U {0} : log_g0 b_ik/g1^j = log_g1 y_ik
     private void genCon(int[] vote, BigInteger[] x) {
 
         // initialise storage for published values
-        this.con = new BigInteger[num_candidates + 1][4 * (num_candidates + 1)];
+        this.con_t = new ECPoint[num_candidates + 1][2 * (num_candidates + 1)];
+        this.con_c = new BigInteger[num_candidates + 1][num_candidates + 1];
+        this.con_s = new BigInteger[num_candidates + 1][num_candidates + 1];
 
-        BigInteger[] b = ballot.getB();
-        BigInteger[] y = ballot.getY();
+        ECPoint[] b = ballot.getB();
+        ECPoint[] y = ballot.getY();
 
         BigInteger id = BigInteger.valueOf(ballot.getIndex());
 
@@ -45,8 +53,8 @@ public class CastNIZKP extends NIZKP {
         for (int j = 0; j <= num_candidates; j++) {
 
             BigInteger[] r = new BigInteger[num_candidates + 1];
-            BigInteger[] t = new BigInteger[num_candidates + 1];
-            BigInteger[] t_p = new BigInteger[num_candidates + 1];
+            ECPoint[] t = new ECPoint[num_candidates + 1];
+            ECPoint[] t_p = new ECPoint[num_candidates + 1];
             BigInteger[] c = new BigInteger[num_candidates + 1];
             BigInteger[] s = new BigInteger[num_candidates + 1];
 
@@ -57,16 +65,16 @@ public class CastNIZKP extends NIZKP {
 
                     marked_entry = i;
 
-                    r[i] = super.genRandomQ();
-                    t[i] = g0.modPow(r[i], p);
-                    t_p[i] = g1.modPow(r[i], p);
+                    r[i] = Election.genRandom(q);
+                    t[i] = g0.multiply(r[i]);  
+                    t_p[i] = g1.multiply(r[i]);
 
                 } else {
 
-                    c[i] = super.genRandomQ();
-                    s[i] = super.genRandomQ();
-                    t[i] = b[i].multiply(g1.modPow(BigInteger.valueOf(j), p).modInverse(p)).modPow(c[i], p).modInverse(p).multiply(g0.modPow(s[i], p)).mod(p);
-                    t_p[i] = y[i].modInverse(p).modPow(c[i], p).multiply(g1.modPow(s[i], p)).mod(p);
+                    c[i] = Election.genRandom(q);
+                    s[i] = Election.genRandom(q);
+                    t[i] = (b[i].subtract(g1.multiply(BigInteger.valueOf(j)))).multiply(c[i].negate()).add(g0.multiply(s[i]));     
+                    t_p[i] = (y[i]).multiply(c[i].negate()).add(g1.multiply(s[i]));
 
                 }
 
@@ -74,9 +82,9 @@ public class CastNIZKP extends NIZKP {
 
             BigInteger ch;
 
-            ArrayList<BigInteger> all = new ArrayList<BigInteger>();
+            ArrayList<ECPoint> all = new ArrayList<ECPoint>();
 
-            all.add(id);
+            all.add(g0.multiply(id));
             all.add(g0);
             all.add(g1);
             for (int i = 0; i <= num_candidates; i++) {
@@ -86,36 +94,38 @@ public class CastNIZKP extends NIZKP {
                 all.add(t_p[i]);
             }
 
-            BigInteger[] arr = all.toArray(new BigInteger[all.size()]);
+            ECPoint[] arr = all.toArray(new ECPoint[all.size()]);
             ch = Election.hash(arr);
 
             // compute the challenge for the marked entry
             c[marked_entry] = ch;
             for (int i = 0; i <= num_candidates; i++) {
                 if (i != marked_entry) {
-                    c[marked_entry] = c[marked_entry].subtract(c[i]).mod(q);
+                    c[marked_entry] = c[marked_entry].subtract(c[i]);
                 }
             }
 
-            s[marked_entry] = r[marked_entry].add(x[marked_entry].multiply(c[marked_entry]).mod(q)).mod(q);
+            s[marked_entry] = r[marked_entry].add(x[marked_entry].multiply(c[marked_entry]));
 
             // record all published values
             // t then tp then c then s
             int idx = 0;
             for (int i = 0; i <= num_candidates; i++) {
-                con[j][idx] = t[i];
+                con_t[j][idx] = t[i];
                 idx++;
             }
             for (int i = 0; i <= num_candidates; i++) {
-                con[j][idx] = t_p[i];
+                con_t[j][idx] = t_p[i];
                 idx++;
             }
+            idx = 0;
             for (int i = 0; i <= num_candidates; i++) {
-                con[j][idx] = c[i];
+                con_c[j][idx] = c[i];
                 idx++;
             }
+            idx = 0;
             for (int i = 0; i <= num_candidates; i++) {
-                con[j][idx] = s[i];
+                con_s[j][idx] = s[i];
                 idx++;
             }
 
@@ -123,50 +133,51 @@ public class CastNIZKP extends NIZKP {
 
     }
 
+    
     // verify the first conjunction
     private boolean verifyCon() {
 
         boolean hold = true;
 
-        BigInteger[] t = new BigInteger[num_candidates + 1];
-        BigInteger[] t_p = new BigInteger[num_candidates + 1];
+        ECPoint[] t = new ECPoint[num_candidates + 1];
+        ECPoint[] t_p = new ECPoint[num_candidates + 1];
         BigInteger[] c = new BigInteger[num_candidates + 1];
         BigInteger[] s = new BigInteger[num_candidates + 1];
         
-        BigInteger[] b = super.ballot.getB();
-        BigInteger[] y = super.ballot.getY();
+        ECPoint[] b = super.ballot.getB();
+        ECPoint[] y = super.ballot.getY();
 
         for (int j = 0; j <= num_candidates; j++) {
 
             int idx = 0;
             for (int i = 0; i <= num_candidates; i++) {
-                t[i] = this.con[j][idx];
+                t[i] = this.con_t[j][idx];
                 idx++;
             }
             for (int i = 0; i <= num_candidates; i++) {
-                t_p[i] = this.con[j][idx];
+                t_p[i] = this.con_t[j][idx];
                 idx++;
             }
+            idx = 0;
             for (int i = 0; i <= num_candidates; i++) {
-                c[i] = this.con[j][idx];
+                c[i] = this.con_c[j][idx];
                 idx++;
             }
+            idx = 0;
             for (int i = 0; i <= num_candidates; i++) {
-                s[i] = this.con[j][idx];
+                s[i] = this.con_s[j][idx];
                 idx++;
             }
 
             for (int i = 0; i <= num_candidates; i++) {
 
-                BigInteger left0 = g0.modPow(s[i], p);
-                BigInteger right0 = b[i].multiply(g1.modPow(BigInteger.valueOf(j),p).modInverse(p)).mod(p).modPow(c[i],p).multiply(t[i]).mod(p);  //b[i].modPow(c[i], p).multiply(g1.modPow(BigInteger.valueOf(j), p).modInverse(p)).mod(p).multiply(t[i]).mod(p);
+                ECPoint left0 = g0.multiply(s[i]); 
+                ECPoint right0 = (b[i].subtract(g1.multiply(BigInteger.valueOf(j)))).multiply(c[i]).add(t[i]);   
 
-                //System.out.println(left0.toString().substring(0,4) + " == " + right0.toString().substring(0,4));
+                ECPoint left1 = g1.multiply(s[i]);
+                ECPoint right1 = (y[i].multiply(c[i])).add(t_p[i]);  
 
-                BigInteger left1 = g1.modPow(s[i], p);
-                BigInteger right1 = y[i].modPow(c[i], p).multiply(t_p[i]).mod(p);
-
-                if (left0.compareTo(right0) != 0 || left1.compareTo(right1) != 0) {
+                if (!left0.equals(right0) || !left1.equals(right1)) {
                     hold = false;
                 }
 
@@ -177,5 +188,5 @@ public class CastNIZKP extends NIZKP {
         return hold;
 
     }
-
+    
 }

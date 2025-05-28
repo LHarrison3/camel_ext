@@ -5,6 +5,9 @@ import java.math.BigInteger;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
+import org.bouncycastle.math.ec.ECCurve;
+import org.bouncycastle.math.ec.ECPoint;
+
 /**
  * An abstract class for NIZKPs.
  * This class simply stores the cryptographic values necessary for a NIZKP to be generated and verified.
@@ -17,18 +20,18 @@ public abstract class NIZKP {
     // number of candidates
     protected int num_candidates;
 
-    // the primes p and q
-    protected BigInteger p;
+    // curve parameters
+    protected ECCurve.Fp curve;
     protected BigInteger q;
 
     // the generators g0 and g1
-    protected BigInteger g0;
-    protected BigInteger g1;
+    protected ECPoint g0;
+    protected ECPoint g1;
 
-    public NIZKP(BigInteger p, BigInteger q, BigInteger g0, BigInteger g1, int num_candidates, Ballot ballot) {
+    public NIZKP(ECCurve.Fp curve, ECPoint g0, ECPoint g1, int num_candidates, Ballot ballot) {
 
-        this.p = p;
-        this.q = q;
+        this.curve = curve;
+        this.q = curve.getQ();
         this.g0 = g0;
         this.g1 = g1;
         this.num_candidates = num_candidates;
@@ -40,14 +43,9 @@ public abstract class NIZKP {
     // method to verify the NIZKP
     public abstract boolean verify();
 
-    // generate a random number from Z^*_q
-    protected BigInteger genRandomQ() {
-        Random gen = new Random();
-        BigInteger random;
-        do {
-            random = new BigInteger(q.bitLength(), gen);
-        } while (random.compareTo(q) >= 0 || random.compareTo(BigInteger.ZERO) == 0);
-        return random;
+    // get the associated ballot
+    public Ballot getBallot() {
+        return this.ballot;
     }
 
 }

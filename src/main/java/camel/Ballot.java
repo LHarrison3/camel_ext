@@ -1,6 +1,7 @@
 package camel;
 
-import java.math.BigInteger;
+import org.bouncycastle.math.ec.ECCurve;
+import org.bouncycastle.math.ec.ECPoint;
 
 /**
  * This class represents the structure of possible ballots in Camel.
@@ -11,12 +12,12 @@ public class Ballot {
     protected final int index;
 
     // components of a ballot
-    protected final BigInteger[] b;
-    protected final BigInteger[] y;
-    protected final BigInteger[] e;
-    protected final BigInteger[] z;
+    protected final ECPoint[] b;
+    protected final ECPoint[] y;
+    protected final ECPoint[] e;
+    protected final ECPoint[] z;
 
-    public Ballot(int index, BigInteger[] b, BigInteger[] y, BigInteger[] e, BigInteger[] z) {
+    public Ballot(int index, ECPoint[] b, ECPoint[] y, ECPoint[] e, ECPoint[] z) {
         this.index = index;
         this.b = b;
         this.y = y;
@@ -28,39 +29,20 @@ public class Ballot {
         return this.index;
     }
 
-    public BigInteger[] getB() {
+    public ECPoint[] getB() {
         return this.b;
     }
 
-    public BigInteger[] getY() {
+    public ECPoint[] getY() {
         return this.y;
     }
 
-    public BigInteger[] getE() {
+    public ECPoint[] getE() {
         return this.e;
     }
 
-    public BigInteger[] getZ() {
+    public ECPoint[] getZ() {
         return this.z;
     }
-
-    /*
-    // display the b component of a ballot
-    public void displayB() {
-
-        for (int i = 0; i < b.length; i++) {
-            for (int j = 0; j < b[i].length; j++) {
-
-                if (j == b[i].length - 1) {
-                    System.out.println(b[i][j].toString().substring(0,4));
-                } else {
-                    System.out.print(b[i][j].toString().substring(0,4) + ", ");
-                } 
-
-            }
-        }
-
-    }
-    */
 
 }

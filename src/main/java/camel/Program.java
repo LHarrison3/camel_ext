@@ -4,112 +4,109 @@ import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 import java.math.BigInteger;
 
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+
 public class Program {
 
     public static void main(String[] args) {
+        
+        //String[] choices = {"WADE Kym", "MARRA John", "APLIN Greg", "KING Niloufer", "JACKSON Ross"};
+        //IRVReader ir = new IRVReader("./albury.txt", choices);
+        String[] choices = {"AHMED Kays", "OUEIK Ronney", "WALKER Raema", "MICHELS Malikeh", "FOLEY Luke", "GARRARD Paul"};
+        IRVReader ir = new IRVReader("./auburn.txt", choices);
 
-        // try out the class
+        System.out.println("Number of votes: " + ir.getVoteList().size());
+        
+        Election e = new Election("NSW", "05/12/24", choices.length, ZKPLevel.COMPUTE_TALLY_ZKPS);
 
-        int num_candidates = 4;
+        long start = System.currentTimeMillis();
 
-        Election e = new Election("Sample Election", "05/05/22", num_candidates, 112);
+        for (int i = 0; i < ir.getVoteList().size(); i++) {
+            
+            e.castVote(ir.getVoteList().get(i));
 
-        int[] rank0 = {0,2,1,3,4};
-        int[] rank1 = {0,3,1,2,4};
-        int[] rank2 = {3,0,2,4,1}; // 
-        int[] rank3 = {1,2,4,0,3}; //
-        int[] rank4 = {4,1,3,0,2};
-        int[] rank5 = {3,2,1,4,0}; //
-        int[] rank6 = {2,0,4,3,1}; //
-        int[] rank7 = {3,2,0,4,1}; //
-        int[] rank8 = {2,3,1,0,4}; //
+            if (i % 1000 == 0) {
+                long partial_elapsed = System.currentTimeMillis() - start;
+                System.out.println("Cast " + i + " votes in " + partial_elapsed + "ms");
+            }
 
-        int[] encoding0 = e.encode(rank0);
-        int[] encoding1 = e.encode(rank1);
-        int[] encoding2 = e.encode(rank2);
-        int[] encoding3 = e.encode(rank3);
-        int[] encoding4 = e.encode(rank4);
-        int[] encoding5 = e.encode(rank5);
-        int[] encoding6 = e.encode(rank6);
-        int[] encoding7 = e.encode(rank7);
-        int[] encoding8 = e.encode(rank8);
-
-
-        /*
-        System.out.println(Arrays.toString(rank0));
-        System.out.println(Arrays.toString(encoding0));
-
-        System.out.println("");
-        System.out.println(Arrays.toString(rank1));
-        System.out.println(Arrays.toString(encoding1));
-
-        System.out.println("");
-        System.out.println(Arrays.toString(rank2));
-        System.out.println(Arrays.toString(encoding2));
-
-        System.out.println("");
-        System.out.println(Arrays.toString(rank3));
-        System.out.println(Arrays.toString(encoding3));
-
-        System.out.println("");
-        System.out.println(Arrays.toString(rank4));
-        System.out.println(Arrays.toString(encoding4));
-
-        System.out.println("");
-        System.out.println(Arrays.toString(rank5));
-        System.out.println(Arrays.toString(encoding5));
-
-        System.out.println("");
-        System.out.println(Arrays.toString(rank6));
-        System.out.println(Arrays.toString(encoding6));
-
-        System.out.println("");
-        System.out.println(Arrays.toString(rank7));
-        System.out.println(Arrays.toString(encoding7));
-
-        System.out.println("");
-        System.out.println(Arrays.toString(rank8));
-        System.out.println(Arrays.toString(encoding8));
-        System.out.println("");
-        */
-
-        e.castVote(rank0);
-        e.castVote(rank1);
-        e.castVote(rank2);
-        e.castVote(rank3);
-        e.castVote(rank4);
-        e.castVote(rank5);
-        e.castVote(rank6);
-        e.castVote(rank7);
-        e.castVote(rank8);
-
-        //e.runRound(1);
-
-        e.runRounds();
-
-        e.bulletin_board.printTallies();
-
-        /*
-        System.out.println(Arrays.toString(e.votes.get(2).get(4)));
-        System.out.println(Arrays.toString(e.encodings.get(2).get(4)));
-        */
-
-        int rnd = 2;
-
-        ArrayList<NIZKP> nizkps_bal = e.bulletin_board.getBallotNIZKPsAtRound(rnd);
-        ArrayList<NIZKP> nizkps_enc = e.bulletin_board.getEncodingNIZKPsAtRound(rnd);
-
-        for (int i = 0; i < nizkps_bal.size(); i++) {
-            //System.out.println("Vote: " + Arrays.toString(e.votes.get(rnd).get(i)));
-            //System.out.println("Encoding: " + Arrays.toString(e.encodings.get(rnd).get(i)));
-            System.out.println("NIZKP verification: " + nizkps_bal.get(i).verify());
-            //System.out.println("");
         }
 
-        
-        for (int i = 0; i < num_candidates - 1; i++) {
-            System.out.println("Tally verification: " + e.bulletin_board.verifyTalliesAtRound(i));
-        }        
+        long elapsed = System.currentTimeMillis() - start;
+
+        System.out.println("Total cast time: " + elapsed + "ms");
+
+        // see the tallies after casting
+        e.bulletin_board.printTallyAtRound(0);
+
+        // time the tallying phase
+
+        for (int i = 1; i <= 4; i++) {
+
+             start = System.currentTimeMillis();
+
+            e.runRound(i);
+
+            elapsed = System.currentTimeMillis() - start;
+
+            System.out.println("Total tally time: " + elapsed + "ms");
+
+            // see the tallies
+
+            System.out.println("Tallies");
+            e.bulletin_board.printTallyAtRound(i);
+
+            // time the tally verification
+
+            start = System.currentTimeMillis();
+
+            e.bulletin_board.verifyTalliesAtRound(i);
+
+            elapsed = System.currentTimeMillis() - start;
+
+            System.out.println("Total tally verification time: " + elapsed + "ms");
+
+        }
+
+       
+        /*
+        // time verification of the nizkps for the tallying phase
+
+        start = System.currentTimeMillis();
+
+        HashMap<Integer,BulletinBoardData> data = e.bulletin_board.getBulletinDataAtRound(1);
+
+        int counter = 0;
+        boolean res = true;
+        for (int index : data.keySet()) {
+
+            NIZKP balNizkp = data.get(index).getBalNizkp();
+            NIZKP encNizkp = data.get(index).getEncNizkp();
+
+            res = res && balNizkp.verify() && encNizkp.verify();
+
+            counter++;
+
+            long partial_elapsed = System.currentTimeMillis() - start;
+            if (counter % 1000 == 0) {
+                System.out.println("Verified " + counter + " NIZKPs in " + partial_elapsed + "ms");
+            }
+
+        }
+
+        elapsed = System.currentTimeMillis() - start;
+
+        System.out.println("Total NIZKP verification time: " + elapsed + "ms");
+
+        if (res) {
+            System.out.println("NIZKP verification was successful");
+        } else {
+            System.out.println("NIZKP verification failed");
+        }
+        */
 
     }
 
